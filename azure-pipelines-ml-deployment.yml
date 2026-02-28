@@ -1,0 +1,130 @@
+# Azure DevOps Pipeline: ML Model Deployment
+# Trigger: After training pipeline completes or manual
+
+trigger: none  # Manual trigger
+
+pool:
+  name: 'Default'
+
+variables:
+  - group: guardian-variables
+  - name: AZURE_RESOURCE_GROUP
+    value: 'guardian-ai-prod'
+  - name: AZURE_ML_WORKSPACE
+    value: 'guardian-ai-ml-workspace-prod'
+
+stages:
+  - stage: DeployModels
+    displayName: 'Deploy Models to Azure ML'
+    jobs:
+      - job: DeployModels
+        displayName: 'Deploy All Models'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '3.11'
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install azure-ai-ml azure-identity mlflow azureml-mlflow azure-cli
+            displayName: 'Install dependencies'
+
+          - task: AzureCLI@2
+            displayName: 'Azure Login and Get Subscription ID'
+            inputs:
+              azureSubscription: 'guardian-azure-connection'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                # Dynamically get the current subscription ID after login
+                # AzureCLI task automatically logs in and sets the subscription
+                # Get the subscription ID from the currently logged-in account
+                echo "Getting current subscription ID..."
+                DETECTED_SUB_ID=$(az account show --query id -o tsv 2>&1)
+                EXIT_CODE=$?
+                if [ $EXIT_CODE -ne 0 ] || [ -z "$DETECTED_SUB_ID" ] || [[ "$DETECTED_SUB_ID" == *"error"* ]] || [[ "$DETECTED_SUB_ID" == *"your-subscription-id"* ]]; then
+                  echo "##[error]Failed to get subscription ID from current account"
+                  echo "Exit code: $EXIT_CODE"
+                  echo "Output: $DETECTED_SUB_ID"
+                  echo "Account info:"
+                  az account show
+                  exit 1
+                fi
+                echo "✅ Detected subscription ID: $DETECTED_SUB_ID"
+                # Set as pipeline variable (this will override any value from variable group)
+                echo "##vso[task.setvariable variable=AZURE_SUBSCRIPTION_ID]$DETECTED_SUB_ID"
+
+          - script: |
+              export AZURE_SUBSCRIPTION_ID="$(AZURE_SUBSCRIPTION_ID)"
+              export AZURE_RESOURCE_GROUP="$(AZURE_RESOURCE_GROUP)"
+              export AZURE_ML_WORKSPACE="$(AZURE_ML_WORKSPACE)"
+              
+              cd mlops/deployment
+              python deploy_model.py
+            displayName: 'Deploy Models'
+            env:
+              AZURE_SUBSCRIPTION_ID: $(AZURE_SUBSCRIPTION_ID)
+              AZURE_RESOURCE_GROUP: $(AZURE_RESOURCE_GROUP)
+              AZURE_ML_WORKSPACE: $(AZURE_ML_WORKSPACE)
+
+          - script: |
+              echo "Getting endpoint information..."
+              bash scripts/get-model-endpoints.sh nsfw-detector
+              bash scripts/get-model-endpoints.sh violence-detector
+            displayName: 'Get Endpoint Information'
+            env:
+              AZURE_RESOURCE_GROUP: $(AZURE_RESOURCE_GROUP)
+              AZURE_ML_WORKSPACE: $(AZURE_ML_WORKSPACE)
+            continueOnError: true
+
+          - task: Kubernetes@1
+            displayName: 'Update ConfigMap with endpoints'
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: 'guardian-aks-connection'
+              namespace: 'production'
+              command: 'apply'
+              arguments: '-f k8s/configmap.yaml'
+            continueOnError: true
+
+          - script: |
+              # Get endpoint URLs and keys
+              NSFW_ENDPOINT=$(az ml online-endpoint show \
+                --name nsfw-detector-endpoint \
+                --resource-group $(AZURE_RESOURCE_GROUP) \
+                --workspace-name $(AZURE_ML_WORKSPACE) \
+                --query scoring_uri -o tsv 2>/dev/null || echo "")
+              
+              VIOLENCE_ENDPOINT=$(az ml online-endpoint show \
+                --name violence-detector-endpoint \
+                --resource-group $(AZURE_RESOURCE_GROUP) \
+                --workspace-name $(AZURE_ML_WORKSPACE) \
+                --query scoring_uri -o tsv 2>/dev/null || echo "")
+              
+              ENDPOINT_KEY=$(az ml online-endpoint get-credentials \
+                --name nsfw-detector-endpoint \
+                --resource-group $(AZURE_RESOURCE_GROUP) \
+                --workspace-name $(AZURE_ML_WORKSPACE) \
+                --query primaryKey -o tsv 2>/dev/null || echo "")
+              
+              if [ -z "$NSFW_ENDPOINT" ] || [ -z "$VIOLENCE_ENDPOINT" ]; then
+                echo "⚠️ Could not retrieve endpoint information. Update ConfigMap manually."
+                exit 0
+              fi
+              
+              echo "Updating ConfigMap..."
+              kubectl create configmap guardian-config \
+                --from-literal=NSFW_MODEL_ENDPOINT="$NSFW_ENDPOINT" \
+                --from-literal=VIOLENCE_MODEL_ENDPOINT="$VIOLENCE_ENDPOINT" \
+                --from-literal=MODEL_ENDPOINT_KEY="$ENDPOINT_KEY" \
+                --dry-run=client -o yaml | \
+                kubectl apply -f - -n production
+              
+              echo "Restarting deep-vision pods..."
+              kubectl rollout restart deployment/deep-vision -n production
+              
+              echo "✅ ConfigMap updated and pods restarted!"
+            displayName: 'Update Model Endpoints in K8s'
+            env:
+              AZURE_RESOURCE_GROUP: $(AZURE_RESOURCE_GROUP)
+              AZURE_ML_WORKSPACE: $(AZURE_ML_WORKSPACE)
