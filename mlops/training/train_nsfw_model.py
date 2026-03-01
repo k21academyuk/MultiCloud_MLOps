@@ -196,13 +196,16 @@ def train_nsfw_model():
             
             print(f"Epoch {epoch+1}/{epochs} - Loss: {loss:.4f}, Acc: {accuracy:.4f}, F1: {f1_score:.4f}")
         
-        # Save model
+        # Save model (use custom score script to avoid azureml.ai.monitoring import in Azure ML inference)
         print("💾 Saving model...")
+        _score_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mlflow_score_script.py")
+        _code_paths = [_score_script] if os.path.isfile(_score_script) else []
         model_path = None
         try:
             model_info = mlflow.pytorch.log_model(
                 model,
-                "nsfw-detector"
+                "nsfw-detector",
+                **(dict(code_paths=_code_paths) if _code_paths else {})
             )
             # Extract model_uri from ModelInfo object
             if hasattr(model_info, 'model_uri'):
@@ -409,13 +412,16 @@ def train_violence_model():
             
             print(f"Epoch {epoch+1}/{epochs} - Loss: {loss:.4f}, Acc: {accuracy:.4f}, F1: {f1_score:.4f}")
         
-        # Save model
+        # Save model (use custom score script to avoid azureml.ai.monitoring import in Azure ML inference)
         print("💾 Saving model...")
+        _score_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mlflow_score_script.py")
+        _code_paths = [_score_script] if os.path.isfile(_score_script) else []
         model_path = None
         try:
             model_info = mlflow.pytorch.log_model(
                 model,
-                "violence-detector"
+                "violence-detector",
+                **(dict(code_paths=_code_paths) if _code_paths else {})
             )
             # Extract model_uri from ModelInfo object
             if hasattr(model_info, 'model_uri'):

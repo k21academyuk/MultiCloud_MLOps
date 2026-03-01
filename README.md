@@ -611,6 +611,7 @@ data:
 
 ### Core Guides
 
+- **[OVERVIEW_AND_KEY_CONCEPTS.md](./docs/OVERVIEW_AND_KEY_CONCEPTS.md)** - Scenario, description, key concepts (Azure ML, MLflow, Azure DevOps, AWS services), and benefits
 - **[COMPUTE_CLUSTER_WORKFLOW.md](./docs/COMPUTE_CLUSTER_WORKFLOW.md)** - Complete workflow from Git to deployment
 - **[AZURE_DEVOPS_ML_INTEGRATION_GUIDE.md](./docs/AZURE_DEVOPS_ML_INTEGRATION_GUIDE.md)** - Azure DevOps setup and configuration
 

@@ -1,0 +1,17 @@
+# Conda env for Azure ML MLflow online inference.
+# Includes azureml-ai-monitoring so MLflow-generated score scripts that
+# import "from azureml.ai.monitoring import Collector" do not crash.
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - torch>=1.13
+    - mlflow>=2.0
+    - azureml-mlflow
+    - azureml-ai-monitoring
+    - inference-schema
+    - numpy
+    - pillow

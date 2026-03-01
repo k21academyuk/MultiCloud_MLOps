@@ -5,11 +5,30 @@ from azure.ai.ml.entities import (
     Model,
     Environment,
     CodeConfiguration,
-    ProbeSettings
+    ProbeSettings,
 )
 from azure.identity import DefaultAzureCredential
 import os
 import mlflow
+
+# Environment name for MLflow inference with azureml-ai-monitoring (fixes Collector import)
+INFERENCE_ENV_NAME = "guardian-mlflow-inference"
+
+
+def _get_or_create_inference_environment(ml_client):
+    """Create or get environment that includes azureml-ai-monitoring for MLflow score scripts."""
+    deploy_dir = os.path.dirname(os.path.abspath(__file__))
+    conda_path = os.path.join(deploy_dir, "conda-inference.yaml")
+    if not os.path.isfile(conda_path):
+        return None
+    try:
+        env = Environment(name=INFERENCE_ENV_NAME, conda_file=conda_path)
+        env = ml_client.environments.create_or_update(env)
+        return f"{INFERENCE_ENV_NAME}:{env.version}"
+    except Exception as e:
+        print(f"⚠️ Could not create inference environment: {e}. Using model environment.")
+        return None
+
 
 def deploy_model(model_name="nsfw-detector", version="latest"):
     """Deploy model to Azure ML with A/B testing support"""
@@ -44,6 +63,13 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
     
     print(f"📊 Using model version: {version}")
     
+    # Optional: use custom env with azureml-ai-monitoring so existing MLflow score scripts work
+    env_id = _get_or_create_inference_environment(ml_client)
+    deployment_kw = {}
+    if env_id:
+        deployment_kw["environment"] = env_id
+        print(f"📦 Using inference environment: {env_id}")
+    
     # Deploy champion model (production)
     champion_deployment = ManagedOnlineDeployment(
         name="champion",
@@ -51,6 +77,7 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
         model=f"{model_name}:{version}",
         instance_type="Standard_DS3_v2",
         instance_count=3,
+        **deployment_kw,
         environment_variables={
             "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI"),
             "MODEL_VERSION": version
@@ -87,6 +114,7 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
             model=f"{model_name}:{version}",
             instance_type="Standard_DS3_v2",
             instance_count=1,
+            **deployment_kw,
             environment_variables={
                 "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI"),
                 "MODEL_VERSION": version,
