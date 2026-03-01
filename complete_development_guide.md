@@ -76,7 +76,7 @@ sudo apt-get install -y kubectl python3.11 python3-pip awscli azure-cli helm nod
 sudo yum install -y kubectl python3.11 python3-pip awscli azure-cli helm nodejs npm
 ```
 
-<!-- **Windows:**
+**Windows:**
 ```powershell
 # Using Chocolatey (recommended)
 choco install docker-desktop kubectl python311 awscli azure-cli kubernetes-helm nodejs
@@ -88,7 +88,7 @@ winget install Python.Python.3.11
 winget install Amazon.AWSCLI
 winget install Microsoft.AzureCLI
 winget install Kubernetes.Helm
-winget install OpenJS.NodeJS -->
+winget install OpenJS.NodeJS
 
 # Install Git Bash (recommended for Windows users)
 winget install Git.Git
