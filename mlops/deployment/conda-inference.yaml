@@ -11,6 +11,7 @@ dependencies:
   - pip:
     - azureml-inference-server-http
     - torch>=1.13
+    - torchvision
     - mlflow>=2.0
     - azureml-mlflow
     - azureml-ai-monitoring
