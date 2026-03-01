@@ -2,14 +2,12 @@ from azure.ai.ml import MLClient
 from azure.ai.ml.entities import (
     ManagedOnlineEndpoint,
     ManagedOnlineDeployment,
-    Model,
     Environment,
     CodeConfiguration,
     ProbeSettings,
 )
 from azure.identity import DefaultAzureCredential
 import os
-import mlflow
 
 # Environment name for MLflow inference with azureml-ai-monitoring (fixes Collector import)
 INFERENCE_ENV_NAME = "guardian-mlflow-inference"
@@ -40,6 +38,21 @@ def _get_or_create_inference_environment(ml_client):
             continue
     print(f"⚠️ Could not create inference environment: {last_error}. Using model environment.")
     return None
+
+def _get_code_configuration():
+    """Return explicit scoring configuration so Azure ML packages the entry script."""
+    deploy_dir = os.path.dirname(os.path.abspath(__file__))
+    scoring_script = "main.py"
+    scoring_script_path = os.path.join(deploy_dir, scoring_script)
+    if not os.path.isfile(scoring_script_path):
+        raise FileNotFoundError(
+            f"Required scoring script not found: {scoring_script_path}. "
+            "Deployment expects mlops/deployment/main.py."
+        )
+    return CodeConfiguration(
+        code=deploy_dir,
+        scoring_script=scoring_script,
+    )
 
 
 def deploy_model(model_name="nsfw-detector", version="latest"):
@@ -81,6 +94,8 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
     if env_id:
         deployment_kw["environment"] = env_id
         print(f"📦 Using inference environment: {env_id}")
+    deployment_kw["code_configuration"] = _get_code_configuration()
+    print("📄 Using scoring script: mlops/deployment/main.py")
     
     # Deploy champion model (production). instance_count=1 to stay within DS3_v2 quota (20 vCPUs) for both models.
     champion_deployment = ManagedOnlineDeployment(
@@ -91,7 +106,6 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
         instance_count=1,
         **deployment_kw,
         environment_variables={
-            "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI"),
             "MODEL_VERSION": version
         },
         liveness_probe=ProbeSettings(
@@ -113,8 +127,8 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
     print("🏆 Deploying champion model...")
     ml_client.online_deployments.begin_create_or_update(champion_deployment).result()
     
-    # Set traffic to champion
-    endpoint.traffic = {"champion": 90}
+    # Route all traffic to champion unless A/B testing is enabled.
+    endpoint.traffic = {"champion": 100}
     
     # Deploy challenger model for A/B testing (if enabled)
     if os.getenv("ENABLE_AB_TESTING", "false").lower() == "true":
@@ -128,7 +142,6 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
             instance_count=1,
             **deployment_kw,
             environment_variables={
-                "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI"),
                 "MODEL_VERSION": version,
                 "DEPLOYMENT_TYPE": "challenger"
             }
