@@ -13,21 +13,33 @@ import mlflow
 
 # Environment name for MLflow inference with azureml-ai-monitoring (fixes Collector import)
 INFERENCE_ENV_NAME = "guardian-mlflow-inference"
+# Azure ML inference base image (Ubuntu 22.04); required so Environment build accepts conda_file
+INFERENCE_BASE_IMAGE = "mcr.microsoft.com/azureml/inference-base-2204:20260218.v1"
+INFERENCE_BASE_IMAGE_FALLBACK = "mcr.microsoft.com/azureml/inference-base-2204:latest"
 
 
 def _get_or_create_inference_environment(ml_client):
-    """Create or get environment that includes azureml-ai-monitoring for MLflow score scripts."""
+    """Create or get environment that includes azureml-ai-monitoring for MLflow score scripts.
+    Uses base image + conda_file because Azure ML requires image or Dockerfile."""
     deploy_dir = os.path.dirname(os.path.abspath(__file__))
     conda_path = os.path.join(deploy_dir, "conda-inference.yaml")
     if not os.path.isfile(conda_path):
         return None
-    try:
-        env = Environment(name=INFERENCE_ENV_NAME, conda_file=conda_path)
-        env = ml_client.environments.create_or_update(env)
-        return f"{INFERENCE_ENV_NAME}:{env.version}"
-    except Exception as e:
-        print(f"⚠️ Could not create inference environment: {e}. Using model environment.")
-        return None
+    last_error = None
+    for image in (INFERENCE_BASE_IMAGE, INFERENCE_BASE_IMAGE_FALLBACK):
+        try:
+            env = Environment(
+                name=INFERENCE_ENV_NAME,
+                image=image,
+                conda_file=conda_path,
+            )
+            env = ml_client.environments.create_or_update(env)
+            return f"{INFERENCE_ENV_NAME}:{env.version}"
+        except Exception as e:
+            last_error = e
+            continue
+    print(f"⚠️ Could not create inference environment: {last_error}. Using model environment.")
+    return None
 
 
 def deploy_model(model_name="nsfw-detector", version="latest"):
@@ -70,13 +82,13 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
         deployment_kw["environment"] = env_id
         print(f"📦 Using inference environment: {env_id}")
     
-    # Deploy champion model (production)
+    # Deploy champion model (production). instance_count=1 to stay within DS3_v2 quota (20 vCPUs) for both models.
     champion_deployment = ManagedOnlineDeployment(
         name="champion",
         endpoint_name=endpoint_name,
         model=f"{model_name}:{version}",
         instance_type="Standard_DS3_v2",
-        instance_count=3,
+        instance_count=1,
         **deployment_kw,
         environment_variables={
             "MLFLOW_TRACKING_URI": os.getenv("MLFLOW_TRACKING_URI"),
