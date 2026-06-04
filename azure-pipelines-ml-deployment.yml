@@ -72,7 +72,7 @@ stages:
                   echo "##[error]Failed to get subscription ID"; exit 1
                 fi
                 echo "##vso[task.setvariable variable=AZURE_SUBSCRIPTION_ID]$DETECTED_SUB_ID"
-                echo "✅ Deploying models using venv Python..."
+                echo "Deploying models using venv Python..."
                 export AZURE_SUBSCRIPTION_ID="$DETECTED_SUB_ID"
                 export AZURE_RESOURCE_GROUP="$(AZURE_RESOURCE_GROUP)"
                 export AZURE_ML_WORKSPACE="$(AZURE_ML_WORKSPACE)"
