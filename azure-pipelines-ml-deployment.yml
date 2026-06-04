@@ -78,6 +78,30 @@ stages:
                 export AZURE_ML_WORKSPACE="$(AZURE_ML_WORKSPACE)"
                 cd mlops/deployment
                 "$(VENV_PYTHON)" deploy_model.py
+          
+          # Deploy models (Windows): use venv Python
+          - task: PowerShell@2
+            displayName: 'Azure Login and Deploy Models (Windows)'
+            condition: eq(variables['Agent.OS'], 'Windows_NT')
+            inputs:
+              targetType: 'inline'
+              script: |
+                $subId = az account show --query id -o tsv 2>$null
+
+                if (-not $subId -or $subId -match "error") {
+                    Write-Error "Failed to get subscription ID"
+                    exit 1
+                }
+
+                Write-Host "##vso[task.setvariable variable=AZURE_SUBSCRIPTION_ID]$subId"
+
+                $env:AZURE_SUBSCRIPTION_ID = $subId
+                $env:AZURE_RESOURCE_GROUP = "$(AZURE_RESOURCE_GROUP)"
+                $env:AZURE_ML_WORKSPACE = "$(AZURE_ML_WORKSPACE)"
+
+                Set-Location mlops/deployment
+
+                & "$(VENV_PYTHON)" deploy_model.py
 
           # Deploy models (Windows): use venv Python
           - task: PowerShell@2
