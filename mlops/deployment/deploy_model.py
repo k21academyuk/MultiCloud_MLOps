@@ -36,7 +36,7 @@ def _get_or_create_inference_environment(ml_client):
         except Exception as e:
             last_error = e
             continue
-    print(f"⚠️ Could not create inference environment: {last_error}. Using model environment.")
+    print(f"Could not create inference environment: {last_error}. Using model environment.")
     return None
 
 def _get_code_configuration():
@@ -61,13 +61,13 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
     ml_client = MLClient(
         DefaultAzureCredential(),
         subscription_id=os.getenv("AZURE_SUBSCRIPTION_ID"),
-        resource_group_name=os.getenv("AZURE_RESOURCE_GROUP", "guardian-ai-prod"),
-        workspace_name=os.getenv("AZURE_ML_WORKSPACE", "guardian-ml-workspace-prod")
+        resource_group_name=os.getenv("AZURE_RESOURCE_GROUP"),
+        workspace_name=os.getenv("AZURE_ML_WORKSPACE")
     )
     
     endpoint_name = f"{model_name}-endpoint"
     
-    print(f"🚀 Deploying {model_name} to Azure ML...")
+    print(f"Deploying {model_name} to Azure ML...")
     
     # Create or update endpoint
     endpoint = ManagedOnlineEndpoint(
@@ -77,7 +77,7 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
         tags={"model": model_name, "environment": "production"}
     )
     
-    print(f"🔧 Creating endpoint: {endpoint_name}")
+    print(f"Creating endpoint: {endpoint_name}")
     ml_client.online_endpoints.begin_create_or_update(endpoint).result()
     
     # Get latest model version
@@ -86,16 +86,16 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
         latest_version = max([int(m.version) for m in model_versions])
         version = str(latest_version)
     
-    print(f"📊 Using model version: {version}")
+    print(f"Using model version: {version}")
     
     # Optional: use custom env with azureml-ai-monitoring so existing MLflow score scripts work
     env_id = _get_or_create_inference_environment(ml_client)
     deployment_kw = {}
     if env_id:
         deployment_kw["environment"] = env_id
-        print(f"📦 Using inference environment: {env_id}")
+        print(f"Using inference environment: {env_id}")
     deployment_kw["code_configuration"] = _get_code_configuration()
-    print("📄 Using scoring script: mlops/deployment/main.py")
+    print("Using scoring script: mlops/deployment/main.py")
     
     # Deploy champion model (production). instance_count=1 to stay within DS3_v2 quota (20 vCPUs) for both models.
     champion_deployment = ManagedOnlineDeployment(
@@ -124,7 +124,7 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
         )
     )
     
-    print("🏆 Deploying champion model...")
+    print("Deploying champion model...")
     ml_client.online_deployments.begin_create_or_update(champion_deployment).result()
     
     # Route all traffic to champion unless A/B testing is enabled.
@@ -132,7 +132,7 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
     
     # Deploy challenger model for A/B testing (if enabled)
     if os.getenv("ENABLE_AB_TESTING", "false").lower() == "true":
-        print("🧪 Deploying challenger model for A/B testing...")
+        print("Deploying challenger model for A/B testing...")
         
         challenger_deployment = ManagedOnlineDeployment(
             name="challenger",
@@ -162,9 +162,9 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
     endpoint_details = ml_client.online_endpoints.get(endpoint_name)
     scoring_uri = endpoint_details.scoring_uri
     
-    print(f"\n✅ Deployment successful!")
-    print(f"🔗 Scoring URI: {scoring_uri}")
-    print(f"📊 Traffic split: {endpoint.traffic}")
+    print(f"\nDeployment successful!")
+    print(f"Scoring URI: {scoring_uri}")
+    print(f"Traffic split: {endpoint.traffic}")
     
     return scoring_uri
 
@@ -178,18 +178,18 @@ def deploy_all_models():
             uri = deploy_model(model_name)
             endpoints[model_name] = uri
         except Exception as e:
-            print(f"❌ Failed to deploy {model_name}: {e}")
+            print(f"Failed to deploy {model_name}: {e}")
     
     return endpoints
 
 if __name__ == "__main__":
-    print("🎯 Guardian AI - Model Deployment Pipeline")
+    print("Guardian AI - Model Deployment Pipeline")
     print("="*50)
     
     endpoints = deploy_all_models()
     
-    print("\n🎉 Deployment Summary:")
+    print("\nDeployment Summary:")
     for model, uri in endpoints.items():
         print(f"  {model}: {uri}")
     
-    print("\n📝 Update your .env file with these endpoints!")
+    print("\nUpdate your .env file with these endpoints!")
