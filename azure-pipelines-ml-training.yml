@@ -78,9 +78,9 @@ stages:
             condition: eq(variables['Agent.OS'], 'Windows_NT')
             continueOnError: false
 
-          - script: |
+          - powershell: |
               python -m pip install --upgrade pip
-              pip install azure-ai-ml azure-identity
+              python -m pip install azure-ai-ml azure-identity
             displayName: 'Install dependencies'
 
           - task: AzureCLI@2
@@ -108,26 +108,23 @@ stages:
                 # Set as pipeline variable (this will override any value from variable group)
                 echo "##vso[task.setvariable variable=AZURE_SUBSCRIPTION_ID]$DETECTED_SUB_ID"
 
-          - script: |
-              export AZURE_SUBSCRIPTION_ID="$(AZURE_SUBSCRIPTION_ID)"
-              export AZURE_RESOURCE_GROUP="$(AZURE_RESOURCE_GROUP)"
-              export AZURE_ML_WORKSPACE="$(AZURE_ML_WORKSPACE)"
-              export AZURE_ML_REGION="$(AZURE_ML_REGION)"
-              export COMPUTE_CLUSTER="$(COMPUTE_CLUSTER)"
-              
-              echo "🚀 Submitting NSFW training job to Azure ML compute cluster..."
-              echo "   Subscription ID: $AZURE_SUBSCRIPTION_ID"
-              echo "   Resource Group: $AZURE_RESOURCE_GROUP"
-              echo "   Workspace: $AZURE_ML_WORKSPACE"
-              echo "   Compute Cluster: $COMPUTE_CLUSTER"
-              
+          - powershell: |
+              $env:AZURE_SUBSCRIPTION_ID = "$(AZURE_SUBSCRIPTION_ID)"
+              $env:AZURE_RESOURCE_GROUP = "$(AZURE_RESOURCE_GROUP)"
+              $env:AZURE_ML_WORKSPACE = "$(AZURE_ML_WORKSPACE)"
+              $env:AZURE_ML_REGION = "$(AZURE_ML_REGION)"
+              $env:COMPUTE_CLUSTER = "$(COMPUTE_CLUSTER)"
+
+              Write-Host "Submitting NSFW training job..."
+
               cd mlops/training
-              python submit_training_job.py \
-                --model-type nsfw \
-                --subscription-id "$AZURE_SUBSCRIPTION_ID" \
-                --resource-group "$AZURE_RESOURCE_GROUP" \
-                --workspace-name "$AZURE_ML_WORKSPACE" \
-                --compute-cluster "$COMPUTE_CLUSTER"
+
+              python submit_training_job.py `
+                --model-type nsfw `
+                --subscription-id "$env:AZURE_SUBSCRIPTION_ID" `
+                --resource-group "$env:AZURE_RESOURCE_GROUP" `
+                --workspace-name "$env:AZURE_ML_WORKSPACE" `
+                --compute-cluster "$env:COMPUTE_CLUSTER"
             displayName: 'Submit NSFW Training Job to Compute Cluster'
             env:
               AZURE_SUBSCRIPTION_ID: $(AZURE_SUBSCRIPTION_ID)
@@ -193,9 +190,9 @@ stages:
             condition: eq(variables['Agent.OS'], 'Windows_NT')
             continueOnError: false
 
-          - script: |
+          - powershell: |
               python -m pip install --upgrade pip
-              pip install azure-ai-ml azure-identity
+              python -m pip install azure-ai-ml azure-identity
             displayName: 'Install dependencies'
 
           - task: AzureCLI@2
@@ -223,26 +220,23 @@ stages:
                 # Set as pipeline variable (this will override any value from variable group)
                 echo "##vso[task.setvariable variable=AZURE_SUBSCRIPTION_ID]$DETECTED_SUB_ID"
 
-          - script: |
-              export AZURE_SUBSCRIPTION_ID="$(AZURE_SUBSCRIPTION_ID)"
-              export AZURE_RESOURCE_GROUP="$(AZURE_RESOURCE_GROUP)"
-              export AZURE_ML_WORKSPACE="$(AZURE_ML_WORKSPACE)"
-              export AZURE_ML_REGION="$(AZURE_ML_REGION)"
-              export COMPUTE_CLUSTER="$(COMPUTE_CLUSTER)"
-              
-              echo "🚀 Submitting Violence training job to Azure ML compute cluster..."
-              echo "   Subscription ID: $AZURE_SUBSCRIPTION_ID"
-              echo "   Resource Group: $AZURE_RESOURCE_GROUP"
-              echo "   Workspace: $AZURE_ML_WORKSPACE"
-              echo "   Compute Cluster: $COMPUTE_CLUSTER"
-              
+          - powershell: |
+              $env:AZURE_SUBSCRIPTION_ID = "$(AZURE_SUBSCRIPTION_ID)"
+              $env:AZURE_RESOURCE_GROUP = "$(AZURE_RESOURCE_GROUP)"
+              $env:AZURE_ML_WORKSPACE = "$(AZURE_ML_WORKSPACE)"
+              $env:AZURE_ML_REGION = "$(AZURE_ML_REGION)"
+              $env:COMPUTE_CLUSTER = "$(COMPUTE_CLUSTER)"
+
+              Write-Host "Submitting Violence training job..."
+
               cd mlops/training
-              python submit_training_job.py \
-                --model-type violence \
-                --subscription-id "$AZURE_SUBSCRIPTION_ID" \
-                --resource-group "$AZURE_RESOURCE_GROUP" \
-                --workspace-name "$AZURE_ML_WORKSPACE" \
-                --compute-cluster "$COMPUTE_CLUSTER"
+
+              python submit_training_job.py `
+                --model-type violence `
+                --subscription-id "$env:AZURE_SUBSCRIPTION_ID" `
+                --resource-group "$env:AZURE_RESOURCE_GROUP" `
+                --workspace-name "$env:AZURE_ML_WORKSPACE" `
+                --compute-cluster "$env:COMPUTE_CLUSTER"
             displayName: 'Submit Violence Training Job to Compute Cluster'
             env:
               AZURE_SUBSCRIPTION_ID: $(AZURE_SUBSCRIPTION_ID)
