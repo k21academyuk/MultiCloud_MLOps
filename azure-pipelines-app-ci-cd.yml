@@ -157,7 +157,7 @@ stages:
                     kubernetesServiceEndpoint: 'guardian-aks-connection'
                     namespace: '$(NAMESPACE)'
 
-                - script: |
+                - bash: |
                     echo "Updating ConfigMap..."
                     kubectl apply -f k8s/configmap.yaml
 
@@ -216,7 +216,7 @@ stages:
                     ACR_NAME: $(ACR_NAME)
                     NAMESPACE: $(NAMESPACE)
 
-                - script: |
+                - bash: |
                     echo "Verifying deployments..."
                     kubectl get pods -n $(NAMESPACE)
                     kubectl get deployments -n $(NAMESPACE)
