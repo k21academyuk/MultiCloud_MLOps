@@ -10,6 +10,8 @@ from azure.ai.ml.entities import Environment, CodeConfiguration
 from azure.identity import DefaultAzureCredential
 from azure.ai.ml.constants import AssetTypes
 import time
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 def submit_training_job(
     model_type: str,
@@ -34,10 +36,10 @@ def submit_training_job(
     """
     
     # Initialize ML Client
-    print(f"🔧 Initializing ML Client...")
-    print(f"   Subscription: {subscription_id}")
-    print(f"   Resource Group: {resource_group}")
-    print(f"   Workspace: {workspace_name}")
+    print(f"Initializing ML Client...")
+    print(f"Subscription: {subscription_id}")
+    print(f"Resource Group: {resource_group}")
+    print(f"Workspace: {workspace_name}")
     
     ml_client = MLClient(
         DefaultAzureCredential(),
@@ -47,14 +49,14 @@ def submit_training_job(
     )
     
     # Verify compute cluster exists
-    print(f"🔍 Verifying compute cluster '{compute_cluster}' exists...")
+    print(f"Verifying compute cluster '{compute_cluster}' exists...")
     try:
         cluster = ml_client.compute.get(compute_cluster)
-        print(f"✅ Found compute cluster: {cluster.name} (Status: {cluster.provisioning_state})")
+        print(f"Found compute cluster: {cluster.name} (Status: {cluster.provisioning_state})")
         if cluster.provisioning_state != "Succeeded":
-            print(f"⚠️ Warning: Compute cluster is not in 'Succeeded' state. Current state: {cluster.provisioning_state}")
+            print(f"Warning: Compute cluster is not in 'Succeeded' state. Current state: {cluster.provisioning_state}")
     except Exception as e:
-        print(f"❌ Error: Compute cluster '{compute_cluster}' not found or not accessible: {e}")
+        print(f"Error: Compute cluster '{compute_cluster}' not found or not accessible: {e}")
         raise
     
     # Set defaults based on model type
@@ -80,9 +82,9 @@ def submit_training_job(
     if not os.path.exists(training_script_path):
         raise FileNotFoundError(f"Training script not found: {training_script_path}")
     
-    print(f"📝 Training script: {training_script_path}")
-    print(f"📊 Experiment name: {experiment_name}")
-    print(f"🏷️ Job name: {job_name}")
+    print(f"Training script: {training_script_path}")
+    print(f"Experiment name: {experiment_name}")
+    print(f"Job name: {job_name}")
     
     # Set up environment variables for the job
     env_vars = {
@@ -95,7 +97,7 @@ def submit_training_job(
     
     # Create a curated environment or use a base one
     # For PyTorch training, we'll use Azure ML's curated PyTorch environment
-    print(f"🔧 Setting up job environment...")
+    print(f"Setting up job environment...")
     
     # Create command job
     # Install all dependencies and run training script
@@ -121,7 +123,7 @@ def submit_training_job(
         if pytorch_envs:
             env_object = pytorch_envs[0]
             base_env = env_object.name
-            print(f"✅ Using PyTorch environment: {base_env}")
+            print(f"Using PyTorch environment: {base_env}")
             # If using PyTorch env, we don't need to install torch/torchvision
             install_cmd = (
                 "pip install --upgrade pip && "
@@ -130,14 +132,14 @@ def submit_training_job(
                 f"python {training_script}"
             )
         else:
-            print(f"⚠️ No PyTorch curated environment found, using base environment: {base_env}")
+            print(f"No PyTorch curated environment found, using base environment: {base_env}")
             # Try to get the base environment object
             try:
                 env_object = ml_client.environments.get(base_env, version="1")
             except:
                 pass  # Will use string name if object not found
     except Exception as e:
-        print(f"⚠️ Could not check for PyTorch environments, using base: {e}")
+        print(f"Could not check for PyTorch environments, using base: {e}")
     
     # Use environment object if available, otherwise use string name
     environment_param = env_object if env_object else base_env
@@ -163,21 +165,21 @@ def submit_training_job(
         "framework": "pytorch"
     }
     
-    print(f"🚀 Submitting job to compute cluster '{compute_cluster}'...")
-    print(f"   Job name: {job_name}")
-    print(f"   Command: python {training_script}")
+    print(f"Submitting job to compute cluster '{compute_cluster}'...")
+    print(f"Job name: {job_name}")
+    print(f"Command: python {training_script}")
     
     try:
         # Submit the job
         returned_job = ml_client.jobs.create_or_update(command_job)
-        print(f"✅ Job submitted successfully!")
-        print(f"   Job ID: {returned_job.id}")
-        print(f"   Job Name: {returned_job.name}")
-        print(f"   Status: {returned_job.status}")
-        print(f"   Portal URL: {returned_job.studio_url}")
+        print(f"Job submitted successfully!")
+        print(f"Job ID: {returned_job.id}")
+        print(f"Job Name: {returned_job.name}")
+        print(f"Status: {returned_job.status}")
+        print(f"Portal URL: {returned_job.studio_url}")
         
         # Wait for job completion
-        print(f"\n⏳ Waiting for job to complete...")
+        print(f"\n Waiting for job to complete...")
         print(f"   You can monitor progress at: {returned_job.studio_url}")
         
         # Poll for job status
@@ -197,34 +199,34 @@ def submit_training_job(
                 break
             
             if elapsed_time > max_wait_time:
-                print(f"⚠️ Warning: Maximum wait time ({max_wait_time}s) exceeded. Job may still be running.")
-                print(f"   Monitor at: {returned_job.studio_url}")
+                print(f" Warning: Maximum wait time ({max_wait_time}s) exceeded. Job may still be running.")
+                print(f" Monitor at: {returned_job.studio_url}")
                 return returned_job
             
             time.sleep(poll_interval)
         
         # Final status check
         final_job = ml_client.jobs.get(returned_job.name)
-        print(f"\n📊 Final Job Status: {final_job.status}")
+        print(f"\n Final Job Status: {final_job.status}")
         
         if final_job.status == "Completed":
-            print(f"✅ Job completed successfully!")
+            print(f" Job completed successfully!")
             print(f"   Job ID: {final_job.id}")
             print(f"   Portal URL: {final_job.studio_url}")
             return final_job
         elif final_job.status == "Failed":
-            print(f"❌ Job failed!")
+            print(f" Job failed!")
             print(f"   Error details available at: {final_job.studio_url}")
             # Try to get error details
             if hasattr(final_job, 'error') and final_job.error:
                 print(f"   Error: {final_job.error}")
             raise Exception(f"Training job failed. Check details at: {final_job.studio_url}")
         else:
-            print(f"⚠️ Job ended with status: {final_job.status}")
+            print(f" Job ended with status: {final_job.status}")
             return final_job
             
     except Exception as e:
-        print(f"❌ Error submitting job: {e}")
+        print(f"Error submitting job: {e}")
         raise
 
 
@@ -295,10 +297,10 @@ def main():
             training_script=args.training_script,
             experiment_name=args.experiment_name
         )
-        print(f"\n🎉 Training job completed successfully!")
+        print(f"\n Training job completed successfully!")
         sys.exit(0)
     except Exception as e:
-        print(f"\n❌ Failed to submit or complete training job: {e}")
+        print(f"\n Failed to submit or complete training job: {e}")
         sys.exit(1)
 
 
