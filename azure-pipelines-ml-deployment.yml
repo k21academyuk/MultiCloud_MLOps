@@ -80,14 +80,12 @@ stages:
                 "$(VENV_PYTHON)" deploy_model.py
 
           # Deploy models (Windows): use venv Python
-          - task: AzureCLI@2
+          - task: PowerShell@2
             displayName: 'Azure Login and Deploy Models (Windows)'
             condition: eq(variables['Agent.OS'], 'Windows_NT')
             inputs:
-              azureSubscription: 'guardian-azure-connection'
-              scriptType: 'psh'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
+              targetType: 'inline'
+              script: |
                 $subId = az account show --query id -o tsv 2>$null
                 if (-not $subId -or $subId -match "error") { Write-Error "Failed to get subscription ID"; exit 1 }
                 Write-Host "##vso[task.setvariable variable=AZURE_SUBSCRIPTION_ID]$subId"
@@ -95,7 +93,6 @@ stages:
                 $env:AZURE_RESOURCE_GROUP = "$(AZURE_RESOURCE_GROUP)"
                 $env:AZURE_ML_WORKSPACE = "$(AZURE_ML_WORKSPACE)"
                 Set-Location mlops/deployment
-                Write-Host "✅ Deploying models using venv Python..."
                 & "$(VENV_PYTHON)" deploy_model.py
 
           # Get endpoints and update K8s ConfigMap (Linux/macOS)
@@ -137,37 +134,30 @@ stages:
                 fi
 
           # Get endpoints and update K8s ConfigMap (Windows)
-          - task: AzureCLI@2
+          - task: PowerShell@2
             displayName: 'Get Endpoint Information and Update K8s ConfigMap (Windows)'
             condition: eq(variables['Agent.OS'], 'Windows_NT')
             inputs:
-              azureSubscription: 'guardian-azure-connection'
-              scriptType: 'psh'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
+              targetType: 'inline'
+              script: |
                 $RG = "$(AZURE_RESOURCE_GROUP)"
                 $WS = "$(AZURE_ML_WORKSPACE)"
+
                 Write-Host "Getting endpoint information..."
-                $nsfw = az ml online-endpoint show --name nsfw-detector-endpoint --resource-group $RG --workspace-name $WS --query scoring_uri -o tsv 2>$null
-                $violence = az ml online-endpoint show --name violence-detector-endpoint --resource-group $RG --workspace-name $WS --query scoring_uri -o tsv 2>$null
-                $key = az ml online-endpoint get-credentials --name nsfw-detector-endpoint --resource-group $RG --workspace-name $WS --query primaryKey -o tsv 2>$null
+
+                $nsfw = az ml online-endpoint show --name nsfw-detector-endpoint --resource-group $RG --workspace-name $WS --query scoring_uri -o tsv
+                $violence = az ml online-endpoint show --name violence-detector-endpoint --resource-group $RG --workspace-name $WS --query scoring_uri -o tsv
+                $key = az ml online-endpoint get-credentials --name nsfw-detector-endpoint --resource-group $RG --workspace-name $WS --query primaryKey -o tsv
+
                 if (-not $nsfw -or -not $violence) {
-                  Write-Host "⚠️ Could not retrieve endpoint information. Update ConfigMap manually."
-                  exit 0
+                    Write-Host "Could not retrieve endpoint information"
+                    exit 0
                 }
+
                 $aks = "$(AKS_CLUSTER)"
+
                 if ($aks) {
-                  Write-Host "Configuring kubectl for AKS..."
-                  az aks get-credentials --resource-group $RG --name $aks --overwrite-existing
-                  kubectl create configmap guardian-config `
-                    --from-literal=NSFW_MODEL_ENDPOINT="$nsfw" `
-                    --from-literal=VIOLENCE_MODEL_ENDPOINT="$violence" `
-                    --from-literal=MODEL_ENDPOINT_KEY="$key" `
-                    --dry-run=client -o yaml | kubectl apply -f - -n production
-                  kubectl rollout restart deployment/deep-vision -n production
-                  Write-Host "✅ ConfigMap updated and pods restarted!"
-                } else {
-                  Write-Host "⚠️ AKS_CLUSTER not set in variable group. Skip K8s ConfigMap update."
+                    az aks get-credentials --resource-group $RG --name $aks --overwrite-existing
                 }
 
           - task: Kubernetes@1
