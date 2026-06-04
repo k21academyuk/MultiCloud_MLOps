@@ -8,14 +8,6 @@ pool:
 
 variables:
   - group: guardian-variables
-  - name: AZURE_RESOURCE_GROUP
-    value: 'guardian-ai-prod'
-  - name: AZURE_ML_WORKSPACE
-    value: 'guardian-ai-ml-workspace-prod'
-  - name: AZURE_ML_REGION
-    value: 'eastus'
-  - name: COMPUTE_CLUSTER
-    value: 'cpu-training-cluster'
 
 stages:
   - stage: TrainModels

@@ -10,10 +10,6 @@ pool:
 
 variables:
   - group: guardian-variables
-  - name: AZURE_RESOURCE_GROUP
-    value: 'guardian-ai-prod'
-  - name: AZURE_ML_WORKSPACE
-    value: 'guardian-ai-ml-workspace-prod2'
 
 stages:
   - stage: DeployModels
