@@ -81,60 +81,6 @@ stages:
 
           # Deploy models (Windows): use venv Python
           - task: PowerShell@2
-            displayName: 'Azure Login and Deploy Models (Windows)'
-            condition: eq(variables['Agent.OS'], 'Windows_NT')
-            inputs:
-              targetType: 'inline'
-              script: |
-                $subId = az account show --query id -o tsv 2>$null
-                if (-not $subId -or $subId -match "error") { Write-Error "Failed to get subscription ID"; exit 1 }
-                Write-Host "##vso[task.setvariable variable=AZURE_SUBSCRIPTION_ID]$subId"
-                $env:AZURE_SUBSCRIPTION_ID = $subId
-                $env:AZURE_RESOURCE_GROUP = "$(AZURE_RESOURCE_GROUP)"
-                $env:AZURE_ML_WORKSPACE = "$(AZURE_ML_WORKSPACE)"
-                Set-Location mlops/deployment
-                & "$(VENV_PYTHON)" deploy_model.py
-
-          # Get endpoints and update K8s ConfigMap (Linux/macOS)
-          - task: AzureCLI@2
-            displayName: 'Get Endpoint Information and Update K8s ConfigMap (Linux/macOS)'
-            condition: ne(variables['Agent.OS'], 'Windows_NT')
-            inputs:
-              azureSubscription: 'guardian-azure-connection'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                set -e
-                RG="$(AZURE_RESOURCE_GROUP)"
-                WS="$(AZURE_ML_WORKSPACE)"
-                echo "Getting endpoint information..."
-                bash scripts/get-model-endpoints.sh nsfw-detector 2>/dev/null || true
-                bash scripts/get-model-endpoints.sh violence-detector 2>/dev/null || true
-                NSFW_ENDPOINT=$(az ml online-endpoint show --name nsfw-detector-endpoint --resource-group "$RG" --workspace-name "$WS" --query scoring_uri -o tsv 2>/dev/null || echo "")
-                VIOLENCE_ENDPOINT=$(az ml online-endpoint show --name violence-detector-endpoint --resource-group "$RG" --workspace-name "$WS" --query scoring_uri -o tsv 2>/dev/null || echo "")
-                ENDPOINT_KEY=$(az ml online-endpoint get-credentials --name nsfw-detector-endpoint --resource-group "$RG" --workspace-name "$WS" --query primaryKey -o tsv 2>/dev/null || echo "")
-                if [ -z "$NSFW_ENDPOINT" ] || [ -z "$VIOLENCE_ENDPOINT" ]; then
-                  echo "⚠️ Could not retrieve endpoint information. Update ConfigMap manually."
-                  exit 0
-                fi
-                AKS_CLUSTER="$(AKS_CLUSTER)"
-                if [ -n "$AKS_CLUSTER" ]; then
-                  echo "Configuring kubectl for AKS..."
-                  az aks get-credentials --resource-group "$RG" --name "$AKS_CLUSTER" --overwrite-existing
-                  echo "Updating ConfigMap..."
-                  kubectl create configmap guardian-config \
-                    --from-literal=NSFW_MODEL_ENDPOINT="$NSFW_ENDPOINT" \
-                    --from-literal=VIOLENCE_MODEL_ENDPOINT="$VIOLENCE_ENDPOINT" \
-                    --from-literal=MODEL_ENDPOINT_KEY="$ENDPOINT_KEY" \
-                    --dry-run=client -o yaml | kubectl apply -f - -n production
-                  kubectl rollout restart deployment/deep-vision -n production
-                  echo "✅ ConfigMap updated and pods restarted!"
-                else
-                  echo "⚠️ AKS_CLUSTER not set in variable group. Skip K8s ConfigMap update."
-                fi
-
-          # Get endpoints and update K8s ConfigMap (Windows)
-          - task: PowerShell@2
             displayName: 'Get Endpoint Information and Update K8s ConfigMap (Windows)'
             condition: eq(variables['Agent.OS'], 'Windows_NT')
             inputs:
@@ -145,19 +91,34 @@ stages:
 
                 Write-Host "Getting endpoint information..."
 
-                $nsfw = az ml online-endpoint show --name nsfw-detector-endpoint --resource-group $RG --workspace-name $WS --query scoring_uri -o tsv
-                $violence = az ml online-endpoint show --name violence-detector-endpoint --resource-group $RG --workspace-name $WS --query scoring_uri -o tsv
-                $key = az ml online-endpoint get-credentials --name nsfw-detector-endpoint --resource-group $RG --workspace-name $WS --query primaryKey -o tsv
+                $nsfw = az ml online-endpoint show --name nsfw-detector-endpoint --resource-group $RG --workspace-name $WS --query scoring_uri -o tsv 2>$null
+                $violence = az ml online-endpoint show --name violence-detector-endpoint --resource-group $RG --workspace-name $WS --query scoring_uri -o tsv 2>$null
+                $key = az ml online-endpoint get-credentials --name nsfw-detector-endpoint --resource-group $RG --workspace-name $WS --query primaryKey -o tsv 2>$null
 
                 if (-not $nsfw -or -not $violence) {
-                    Write-Host "Could not retrieve endpoint information"
+                    Write-Host "Could not retrieve endpoint information. Update ConfigMap manually."
                     exit 0
                 }
 
                 $aks = "$(AKS_CLUSTER)"
 
                 if ($aks) {
+                    Write-Host "Configuring kubectl for AKS..."
+
                     az aks get-credentials --resource-group $RG --name $aks --overwrite-existing
+
+                    kubectl create configmap guardian-config `
+                      --from-literal=NSFW_MODEL_ENDPOINT="$nsfw" `
+                      --from-literal=VIOLENCE_MODEL_ENDPOINT="$violence" `
+                      --from-literal=MODEL_ENDPOINT_KEY="$key" `
+                      --dry-run=client -o yaml | kubectl apply -f - -n production
+
+                    kubectl rollout restart deployment/deep-vision -n production
+
+                    Write-Host "ConfigMap updated and pods restarted!"
+                }
+                else {
+                    Write-Host "AKS_CLUSTER not set in variable group. Skip K8s ConfigMap update."
                 }
 
           - task: Kubernetes@1
