@@ -102,7 +102,7 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
         name="champion",
         endpoint_name=endpoint_name,
         model=f"{model_name}:{version}",
-        instance_type="Standard_DS3_v2",
+        instance_type="Standard_DS1_v2",
         instance_count=1,
         **deployment_kw,
         environment_variables={
@@ -138,7 +138,7 @@ def deploy_model(model_name="nsfw-detector", version="latest"):
             name="challenger",
             endpoint_name=endpoint_name,
             model=f"{model_name}:{version}",
-            instance_type="Standard_DS3_v2",
+            instance_type="Standard_DS1_v2",
             instance_count=1,
             **deployment_kw,
             environment_variables={
